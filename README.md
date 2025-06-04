@@ -22,6 +22,8 @@ The `@parametrize` annotation allows you to run a single test method with multip
 
 ### Example Usage
 
+#### Single Parameter
+
 ```python
 import unittest
 from unittestpoc.annotations.parametrize import parametrize
@@ -36,14 +38,45 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
+#### Multiple Parameters with Labels
+
+```python
+class MyTestCase(unittest.TestCase):
+    @parametrize("x, y", [(1, 2), (3, 4)])
+    def test_example_multi(self, x, y):
+        print(f"Running parametrized multiple variables test with x={x}, y={y}")
+        self.assertTrue(x < y)
+```
+
+#### Multiple Parameters without Labels (Auto-detection)
+
+The decorator can automatically detect parameter names from the function signature:
+
+```python
+class MyTestCase(unittest.TestCase):
+    @parametrize([(1, 2), (3, 4)])
+    def test_example_multi_without_labels(self, x, y):
+        print(f"Running parametrized multiple variables without label test with x={x}, y={y}")
+        self.assertTrue(x < y)
+```
+
 ### Output
 
-When running the above example, the test will execute three times, once for each value in `[1, 2, 3]`.
+When running the above examples, the tests will execute multiple times:
 
+**Single parameter:**
 ```
 Running test with value: 1
 Running test with value: 2
 Running test with value: 3
+```
+
+**Multiple parameters:**
+```
+Running parametrized multiple variables test with x=1, y=2
+Running parametrized multiple variables test with x=3, y=4
+Running parametrized multiple variables without label test with x=1, y=2
+Running parametrized multiple variables without label test with x=3, y=4
 ```
 
 ## Installation
