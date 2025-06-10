@@ -3,6 +3,7 @@ import inspect
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 import threading
+from .fixture import resolve_fixtures
 
 def parametrize(variables_or_values, values=None, threads=1):
     """
@@ -53,14 +54,24 @@ def parametrize(variables_or_values, values=None, threads=1):
             for value_tuple in values:
                 if not isinstance(value_tuple, tuple):
                     value_tuple = (value_tuple,)
-                if len(value_tuple) != len(detected_variables):
-                    raise ValueError(f"Each tuple of values must match the number of parameters. Expected {len(detected_variables)} parameters: {detected_variables}, got {len(value_tuple)} values.")
+                
+                # Only validate against parametrized variables, not fixture parameters
+                parametrized_vars = [var for var in detected_variables if var not in resolve_fixtures(func, args, kwargs)]
+                
+                if len(value_tuple) != len(parametrized_vars):
+                    raise ValueError(f"Each tuple of values must match the number of parametrized parameters. Expected {len(parametrized_vars)} parameters: {parametrized_vars}, got {len(value_tuple)} values.")
                 test_executions.append(value_tuple)
 
             def execute_single_test(value_tuple):
                 """Execute a single test with the given parameters"""
                 try:
-                    func(*args, **dict(zip(detected_variables, value_tuple)), **kwargs)
+                    # Create kwargs with parametrized values
+                    param_kwargs = dict(zip([var for var in detected_variables if var not in resolve_fixtures(func, args, kwargs)], value_tuple))
+                    
+                    # Resolve fixtures and merge with parametrized values
+                    resolved_kwargs = resolve_fixtures(func, args, {**kwargs, **param_kwargs})
+                    
+                    func(*args, **resolved_kwargs)
                     return None  # Success
                 except Exception as e:
                     return e  # Return exception for later handling
@@ -86,7 +97,6 @@ def parametrize(variables_or_values, values=None, threads=1):
                             exceptions.append(result)
                 
                 # If any exceptions occurred, raise the first one
-                # In a real scenario, you might want to collect all exceptions
                 if exceptions:
                     raise exceptions[0]
 
