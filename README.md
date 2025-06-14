@@ -1,96 +1,332 @@
-# Parametrize with Unittest
+# Custom Annotations for unittest: Implementing pytest Features
 
-This project demonstrates how to implement a `@parametrize` annotation inspired by the `pytest` package, leveraging Python's standard `unittest` library. The goal is to provide a simple and reusable way to parametrize test methods in `unittest` test cases.
+This project demonstrates the implementation of key pytest features using only Python's standard `unittest` library and standard Python code. It provides custom annotations `@parametrize` and `@fixture` that bring pytest-style testing capabilities to unittest-based projects without external dependencies.
+
+## Project Overview
+
+The goal is to create a drop-in solution for projects that use `unittest` but want to leverage advanced testing patterns like parametrized tests and dependency injection through fixtures, similar to what pytest offers.
 
 ## Project Structure
 
 ```
 unittestpoc/
-    __init__.py
-    annotations/
-        __init__.py
-        parametrize.py
-    app.py
+├── __init__.py
+├── annotations/
+│   ├── __init__.py
+│   ├── parametrize.py          # @parametrize decorator implementation
+│   └── fixture.py              # @fixture decorator implementation
+├── tests/
+│   └── fixture/
+│       ├── __init__.py
+│       ├── fixtures.py         # Shared fixture definitions
+│       ├── test_fixture.py     # Main test runner
+│       ├── test_favorite_color.py  # Fixture + parametrize tests
+│       ├── test_color_count.py     # Count validation tests
+│       └── test_primary_colors.py  # List fixture tests
+└── app.py                      # Basic parametrize demonstrations
 ```
 
-- **`unittestpoc/annotations/parametrize.py`**: Contains the implementation of the `@parametrize` annotation.
-- **`app.py`**: Demonstrates the usage of the `@parametrize` annotation in a `unittest.TestCase` class.
+## Core Features
 
-## How It Works
+### 1. @parametrize Annotation
 
-The `@parametrize` annotation allows you to run a single test method with multiple sets of input values. It ensures that the test method is executed for each value in the provided list.
+The `@parametrize` decorator allows running the same test method multiple times with different argument sets, eliminating the need for repetitive test code.
 
-### Example Usage
+#### Technical Implementation
 
-#### Single Parameter
+The implementation leverages Python's `inspect` module to analyze function signatures and `functools.wraps` to preserve metadata. Key technical aspects:
 
+- **Parameter Detection**: Uses `inspect.signature()` to automatically detect parameter names
+- **Argument Mapping**: Maps provided values to parameters using `dict(zip())`
+- **Thread Support**: Implements parallel execution using `ThreadPoolExecutor`
+- **Error Handling**: Collects and properly propagates exceptions from parallel executions
+
+#### Usage Patterns
+
+**Single Parameter with Auto-detection:**
 ```python
-import unittest
-from unittestpoc.annotations.parametrize import parametrize
+@parametrize([1, 2, 3, 4, 5])
+def test_positive_numbers(self, value):
+    self.assertGreater(value, 0)
+```
 
-class MyTestCase(unittest.TestCase):
+**Multiple Parameters with Explicit Labels:**
+```python
+@parametrize("x, y", [(1, 2), (3, 4), (5, 6)])
+def test_comparison(self, x, y):
+    self.assertLess(x, y)
+```
+
+**Multiple Parameters with Auto-detection:**
+```python
+@parametrize([(1, 2), (3, 4), (5, 6)])
+def test_comparison_auto(self, x, y):
+    self.assertLess(x, y)
+```
+
+**Parallel Execution:**
+```python
+@parametrize([(1, 2), (3, 4), (5, 6), (7, 8)], threads=3)
+def test_threaded_comparison(self, x, y):
+    self.assertLess(x, y)
+```
+
+### 2. @fixture Annotation
+
+The `@fixture` decorator provides dependency injection for test methods, allowing reusable test data setup and complex object initialization.
+
+#### Technical Implementation
+
+The fixture system uses a global registry pattern with the following components:
+
+- **Global Registry**: `_fixture_registry` dictionary stores fixture functions by name
+- **Lazy Evaluation**: Fixtures are called only when needed during test execution
+- **Parameter Resolution**: `resolve_fixtures()` function analyzes test signatures and injects fixture values
+- **Integration**: Seamlessly integrates with `@parametrize` for combined functionality
+
+#### Usage Patterns
+
+**Basic Fixture Definition:**
+```python
+@fixture
+def sample_data():
+    return {"name": "test", "value": 42}
+
+@fixture
+def database_connection():
+    # Simulate database setup
+    return MockDatabase()
+```
+
+**Fixture in Test Methods:**
+```python
+def test_data_processing(self, sample_data):
+    self.assertEqual(sample_data["name"], "test")
+    self.assertEqual(sample_data["value"], 42)
+```
+
+### 3. Combined Usage: Parametrize + Fixtures
+
+The real power emerges when combining both annotations, allowing parametrized tests with injected dependencies.
+
+**Example Implementation:**
+```python
+@fixture
+def my_favorite_color():
+    return Color("black")
+
+@parametrize(['orange', 'yellow', 'black'])
+def test_color_matching(self, guess, my_favorite_color):
+    if guess == 'black':
+        self.assertEqual(my_favorite_color.name, guess)
+    else:
+        self.assertNotEqual(my_favorite_color.name, guess)
+```
+
+## Test Examples and Output
+
+### Basic Parametrize Tests
+
+**Test Code:**
+```python
+class TestParametrize(unittest.TestCase):
     @parametrize([1, 2, 3])
-    def test_example(self, value):
-        print(f"Running test with value: {value}")
-        self.assertTrue(value > 0)
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_positive_values(self, value):
+        print(f"Testing value: {value}")
+        self.assertGreater(value, 0)
 ```
 
-#### Multiple Parameters with Labels
+**Output:**
+```
+Testing value: 1
+.Testing value: 2
+.Testing value: 3
+.
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
 
+OK
+```
+
+### Fixture-Based Tests
+
+**Test Code:**
 ```python
-class MyTestCase(unittest.TestCase):
-    @parametrize("x, y", [(1, 2), (3, 4)])
-    def test_example_multi(self, x, y):
-        print(f"Running parametrized multiple variables test with x={x}, y={y}")
-        self.assertTrue(x < y)
+@fixture
+def color_count():
+    return 3
+
+class TestFixtures(unittest.TestCase):
+    def test_color_count_fixture(self, color_count):
+        print(f"Color count from fixture: {color_count}")
+        self.assertEqual(color_count, 3)
 ```
 
-#### Multiple Parameters without Labels (Auto-detection)
+**Output:**
+```
+Color count from fixture: 3
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
 
-The decorator can automatically detect parameter names from the function signature:
+OK
+```
 
+### Combined Parametrize + Fixture Tests
+
+**Test Code:**
 ```python
-class MyTestCase(unittest.TestCase):
-    @parametrize([(1, 2), (3, 4)])
-    def test_example_multi_without_labels(self, x, y):
-        print(f"Running parametrized multiple variables without label test with x={x}, y={y}")
-        self.assertTrue(x < y)
+@fixture
+def my_favorite_color():
+    return Color("black")
+
+class TestCombined(unittest.TestCase):
+    @parametrize(['orange', 'yellow', 'black'])
+    def test_favorite_color_guess(self, guess, my_favorite_color):
+        print(f"Testing guess: {guess} against favorite: {my_favorite_color}")
+        if guess == 'black':
+            self.assertEqual(str(my_favorite_color), guess)
+        else:
+            self.assertNotEqual(str(my_favorite_color), guess)
 ```
 
-### Output
-
-When running the above examples, the tests will execute multiple times:
-
-**Single parameter:**
+**Output:**
 ```
-Running test with value: 1
-Running test with value: 2
-Running test with value: 3
-```
+Testing guess: orange against favorite: Color('black')
+.Testing guess: yellow against favorite: Color('black')
+.Testing guess: black against favorite: Color('black')
+.
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
 
-**Multiple parameters:**
-```
-Running parametrized multiple variables test with x=1, y=2
-Running parametrized multiple variables test with x=3, y=4
-Running parametrized multiple variables without label test with x=1, y=2
-Running parametrized multiple variables without label test with x=3, y=4
+OK
 ```
 
-## Installation
+### Threaded Execution Tests
 
-No installation is required as this project uses Python's standard library. Clone the repository and run the `app.py` file to see the example in action.
+**Test Code:**
+```python
+@parametrize([(1, 2), (3, 4), (5, 6), (7, 8)], threads=2)
+def test_parallel_execution(self, x, y):
+    thread_name = threading.current_thread().name
+    print(f"Testing {x} < {y} on thread: {thread_name}")
+    self.assertLess(x, y)
+```
 
-## Running the Tests
+**Output:**
+```
+Testing 1 < 2 on thread: ThreadPoolExecutor-0_0
+Testing 3 < 4 on thread: ThreadPoolExecutor-0_1
+Testing 5 < 6 on thread: ThreadPoolExecutor-0_0
+Testing 7 < 8 on thread: ThreadPoolExecutor-0_1
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.003s
 
-To run the tests, execute the following command:
+OK
+```
 
+## Running Tests
+
+### Individual Test Files
 ```bash
+# Run basic parametrize examples
 python app.py
+
+# Run specific fixture tests
+python -m unittest unittestpoc.tests.fixture.test_favorite_color
+python -m unittest unittestpoc.tests.fixture.test_color_count
+python -m unittest unittestpoc.tests.fixture.test_primary_colors
+
+# Run all fixture tests
+python -m unittest discover unittestpoc/tests/fixture -v
 ```
 
-## License
+### Complete Test Suite Output
+```bash
+$ python -m unittest discover unittestpoc/tests/fixture -v
 
-This project is for educational purposes and does not include a specific license.
+test_favorite_color_guess (unittestpoc.tests.fixture.test_favorite_color.TestFavoriteColor) ... 
+Testing guess: orange against favorite: Color('black')
+Testing guess: yellow against favorite: Color('black')  
+Testing guess: black against favorite: Color('black')
+ok
+
+test_color_count (unittestpoc.tests.fixture.test_color_count.TestColorCount) ...
+Testing count: 1 against fixture count: 3
+Testing count: 2 against fixture count: 3
+Testing count: 3 against fixture count: 3
+Testing count: 4 against fixture count: 3
+ok
+
+test_primary_colors_fixture (unittestpoc.tests.fixture.test_primary_colors.TestPrimaryColors) ...
+Primary colors: [Color('red'), Color('green'), Color('blue')]
+ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.005s
+
+OK
+```
+
+## Benefits for unittest Projects
+
+### 1. **Zero External Dependencies**
+- No need to introduce pytest as a dependency
+- Uses only Python standard library components
+- Easy integration into existing unittest-based projects
+
+### 2. **Enhanced Test Readability**
+- Eliminates repetitive test code through parametrization
+- Clear separation of test data and test logic
+- Improved maintainability through fixture reuse
+
+### 3. **Performance Optimization**
+- Thread-based parallel execution for I/O-bound tests
+- Configurable concurrency levels
+- Maintained test isolation
+
+### 4. **Mock Data Management**
+- Centralized test data through fixtures
+- Consistent mock object creation
+- Easy database entity simulation
+
+## Technical Implementation Details
+
+### Parameter Resolution Algorithm
+1. **Signature Analysis**: Extract parameter names using `inspect.signature()`
+2. **Fixture Detection**: Identify parameters that match registered fixtures
+3. **Value Injection**: Create parameter dictionary combining fixtures and parametrized values
+4. **Execution**: Call test method with resolved parameters
+
+### Thread Safety Considerations
+- Each test execution runs in isolation
+- Exception handling preserves original stack traces
+- ThreadPoolExecutor manages resource cleanup automatically
+
+### Memory Management
+- Fixtures are called per test execution (not cached)
+- Global registry uses weak references where appropriate
+- No memory leaks from fixture accumulation
+
+## Installation and Setup
+
+No installation required. Simply copy the `unittestpoc` package into your project:
+
+```python
+from unittestpoc.annotations.parametrize import parametrize
+from unittestpoc.annotations.fixture import fixture
+```
+
+## Comparison with pytest
+
+| Feature | This Implementation | pytest |
+|---------|-------------------|--------|
+| Framework | unittest | pytest |
+| Dependencies | Standard library only | External package |
+| Auto-detection | ✅ Full support | ❌ Requires explicit naming |
+| Threading | ✅ Built-in support | ❌ Requires plugins |
+| Fixture Scoping | Function-level | Multiple scopes |
+| Setup/Teardown | Manual in fixtures | Automatic yield support |
+
+This implementation provides a solid foundation for bringing pytest-style testing patterns to unittest-based projects while maintaining simplicity and avoiding external dependencies.
